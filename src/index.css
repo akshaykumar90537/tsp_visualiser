@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6; /* blue-500 */
+  --color-secondary: #10b981; /* emerald-500 */
+  --color-background: #0f172a; /* slate-900 */
+  --color-panel: #1e293b; /* slate-800 */
+  --color-border: #334155; /* slate-700 */
+  --color-text: #f8fafc; /* slate-50 */
+  --color-text-muted: #94a3b8; /* slate-400 */
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  overflow: hidden;
+}
