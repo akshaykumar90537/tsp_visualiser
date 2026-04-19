@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Map, Settings, Play, Pause, StepForward, BarChart2, Layers, Globe, Search, Plus, Trash2, X, Activity, Clock, Zap, Cpu, Verified, AlertTriangle, ShieldCheck } from 'lucide-react'
-import { City, TraceEvent, buildDistanceMatrix } from './types'
+import { City, TraceEvent, buildDistanceMatrix, generateRandomCities } from './types'
 import { nearestNeighbor } from './algorithms/greedy'
 import { dynamicProgramming } from './algorithms/dp'
 import { branchAndBound } from './algorithms/branchBound'
@@ -33,6 +33,7 @@ function App() {
   const [algorithm, setAlgorithm] = useState<'greedy' | 'dp' | 'bb'>('bb')
   const [speedMs, setSpeedMs] = useState(100)
   const [viewMode, setViewMode] = useState<'2d' | 'map'>('map')
+  const [numCities, setNumCities] = useState(12)
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('')
@@ -295,148 +296,242 @@ function App() {
         <div className="w-[420px] flex-shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col shadow-2xl z-10">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             
-            {/* Search Bar Section */}
-            <section className="relative z-50">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                <Search size={16} /> Add Location
-              </h2>
-              <div className="relative">
-                <input 
-                   type="text" 
-                   value={searchQuery}
-                   onChange={(e) => setSearchQuery(e.target.value)}
-                   placeholder="Search for a city (e.g. Mumbai)"
-                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
-                />
-                {isSearching && (
-                   <div className="absolute right-3 top-3.5">
-                      <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
-                   </div>
-                )}
-              </div>
-              
-              {/* Dropdown Results */}
-              {searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-[100]">
-                   {searchResults.map((res, idx) => (
-                     <button 
-                       key={idx}
-                       onClick={() => handleAddCity(res)}
-                       className="w-full text-left px-4 py-3 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 text-sm flex items-center justify-between"
-                     >
-                        <span className="truncate flex-1 pr-2">{res.display_name}</span>
-                        <Plus size={16} className="text-emerald-400 shrink-0" />
-                     </button>
-                   ))}
-                </div>
-              )}
-            </section>
-
-            {/* City Management List */}
-            <section className="z-10 relative">
-              <div className="flex items-center justify-between mb-3">
-                 <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                    📍 Itinerary ({cities.length}/15)
-                 </h2>
-                 {cities.length > 0 && (
-                    <button onClick={clearAllCities} className="text-xs text-red-400 hover:text-red-300 font-medium">Clear All</button>
-                 )}
-              </div>
-              
-              <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden max-h-[170px] overflow-y-auto">
-                 {cities.length === 0 ? (
-                    <div className="p-4 text-center text-slate-500 text-sm">No cities added. Search above!</div>
-                 ) : (
-                    <div className="divide-y divide-slate-800">
-                      {cities.map((city, idx) => (
-                         <div key={city.id} className="p-3 flex items-center justify-between group hover:bg-slate-800/80 transition-colors">
-                            <div className="flex items-center gap-3 w-full">
-                               <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400 shrink-0">
-                                  {idx + 1}
-                               </div>
-                               <div className="min-w-0 pr-2">
-                                  <p className="text-sm font-medium truncate">{city.name || `City ${city.id}`}</p>
-                                  <p className="text-[10px] text-slate-500 font-mono">{city.lat.toFixed(2)}, {city.lng.toFixed(2)}</p>
-                               </div>
-                            </div>
-                            <button onClick={() => removeCity(idx)} className="text-slate-500 hover:text-red-400 transition-colors p-1 shrink-0">
-                               <Trash2 size={16} />
-                            </button>
-                         </div>
-                      ))}
-                    </div>
-                 )}
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                <BarChart2 size={16} /> Routing Algorithm
-              </h2>
-              <div className="space-y-2">
-                {[
-                  {id: 'bb', label: 'Branch & Bound (Exact)'}, 
-                  {id: 'dp', label: 'Held-Karp DP (Exact)'}, 
-                  {id: 'greedy', label: 'Nearest Neighbor (Fast)'}
-                ].map((algo) => (
-                  <label key={algo.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${algorithm === algo.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500 bg-slate-900/50'}`}>
+            {viewMode === 'map' ? (
+              <>
+                {/* Search Bar Section */}
+                <section className="relative z-50">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                    <Search size={16} /> Add Location
+                  </h2>
+                  <div className="relative">
                     <input 
-                      type="radio" name="algorithm" checked={algorithm === algo.id}
-                      onChange={() => setAlgorithm(algo.id as any)} className="hidden" 
+                       type="text" 
+                       value={searchQuery}
+                       onChange={(e) => setSearchQuery(e.target.value)}
+                       placeholder="Search for a city (e.g. Mumbai)"
+                       className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
                     />
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${algorithm === algo.id ? 'border-blue-500' : 'border-slate-500'}`}>
-                      {algorithm === algo.id && <div className="w-2 h-2 bg-blue-500 rounded-full"/>}
+                    {isSearching && (
+                       <div className="absolute right-3 top-3.5">
+                          <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
+                       </div>
+                    )}
+                  </div>
+                  
+                  {/* Dropdown Results */}
+                  {searchResults.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-[100]">
+                       {searchResults.map((res, idx) => (
+                         <button 
+                           key={idx}
+                           onClick={() => handleAddCity(res)}
+                           className="w-full text-left px-4 py-3 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 text-sm flex items-center justify-between"
+                         >
+                            <span className="truncate flex-1 pr-2">{res.display_name}</span>
+                            <Plus size={16} className="text-emerald-400 shrink-0" />
+                         </button>
+                       ))}
                     </div>
-                    <span className="text-sm font-medium">{algo.label}</span>
-                  </label>
-                ))}
-              </div>
-            </section>
+                  )}
+                </section>
+
+                {/* City Management List */}
+                <section className="z-10 relative">
+                  <div className="flex items-center justify-between mb-3">
+                     <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                        📍 Itinerary ({cities.length}/15)
+                     </h2>
+                     {cities.length > 0 && (
+                        <button onClick={clearAllCities} className="text-xs text-red-400 hover:text-red-300 font-medium">Clear All</button>
+                     )}
+                  </div>
+                  
+                  <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden max-h-[170px] overflow-y-auto">
+                     {cities.length === 0 ? (
+                        <div className="p-4 text-center text-slate-500 text-sm">No cities added. Search above!</div>
+                     ) : (
+                        <div className="divide-y divide-slate-800">
+                          {cities.map((city, idx) => (
+                             <div key={city.id} className="p-3 flex items-center justify-between group hover:bg-slate-800/80 transition-colors">
+                                <div className="flex items-center gap-3 w-full">
+                                   <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400 shrink-0">
+                                      {idx + 1}
+                                   </div>
+                                   <div className="min-w-0 pr-2">
+                                      <p className="text-sm font-medium truncate">{city.name || `City ${city.id}`}</p>
+                                      <p className="text-[10px] text-slate-500 font-mono">{city.lat.toFixed(2)}, {city.lng.toFixed(2)}</p>
+                                   </div>
+                                </div>
+                                <button onClick={() => removeCity(idx)} className="text-slate-500 hover:text-red-400 transition-colors p-1 shrink-0">
+                                   <Trash2 size={16} />
+                                </button>
+                             </div>
+                          ))}
+                        </div>
+                     )}
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                    <BarChart2 size={16} /> Routing Algorithm
+                  </h2>
+                  <div className="space-y-2">
+                    {[
+                      {id: 'bb', label: 'Branch & Bound (Exact)'}, 
+                      {id: 'dp', label: 'Held-Karp DP (Exact)'}, 
+                      {id: 'greedy', label: 'Nearest Neighbor (Fast)'}
+                    ].map((algo) => (
+                      <label key={algo.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${algorithm === algo.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500 bg-slate-900/50'}`}>
+                        <input 
+                          type="radio" name="algorithm" checked={algorithm === algo.id}
+                          onChange={() => setAlgorithm(algo.id as any)} className="hidden" 
+                        />
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${algorithm === algo.id ? 'border-blue-500' : 'border-slate-500'}`}>
+                          {algorithm === algo.id && <div className="w-2 h-2 bg-blue-500 rounded-full"/>}
+                        </div>
+                        <span className="text-sm font-medium">{algo.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <div className="mb-6">
+                  <h1 className="text-2xl font-bold text-blue-400 flex items-center gap-2 mb-2">
+                    <Map size={24} /> TSP Visualizer
+                  </h1>
+                  <p className="text-slate-400 text-sm">
+                    Solve and animate the Traveling Salesperson Problem interactively.
+                  </p>
+                </div>
+
+                <section>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm font-semibold text-slate-300">Number of Cities (Max 15)</label>
+                    <span className="text-blue-400 font-bold">{numCities}</span>
+                  </div>
+                  <input 
+                    type="range" min="3" max="15" 
+                    value={numCities} 
+                    onChange={(e) => {
+                       const val = parseInt(e.target.value);
+                       setNumCities(val);
+                       setCities(generateRandomCities(val, CANVAS_WIDTH, CANVAS_HEIGHT));
+                       setTrace([]);
+                       setIsPlaying(false);
+                    }}
+                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </section>
+
+                <section>
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm font-semibold text-slate-300">Animation Speed</label>
+                  </div>
+                  <input 
+                    type="range" min="10" max="1000" step="10"
+                    value={1010 - speedMs} 
+                    onChange={(e) => setSpeedMs(1010 - parseInt(e.target.value))}
+                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </section>
+
+                <button 
+                   onClick={() => {
+                     setCities(generateRandomCities(numCities, CANVAS_WIDTH, CANVAS_HEIGHT));
+                     setTrace([]);
+                     setIsPlaying(false);
+                   }} 
+                   className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-colors"
+                >
+                   <Settings size={16} /> Randomize
+                </button>
+                
+                <section>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                    <BarChart2 size={16} /> ALGORITHMS
+                  </h2>
+                  <div className="space-y-2">
+                    {[
+                      {id: 'bb', label: 'Branch & Bound'}, 
+                      {id: 'dp', label: 'Dynamic Programming'}, 
+                      {id: 'greedy', label: 'Nearest Neighbor'}
+                    ].map((algo) => (
+                      <label key={algo.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${algorithm === algo.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500 bg-slate-900/50'}`}>
+                        <input 
+                          type="radio" name="algorithm" checked={algorithm === algo.id}
+                          onChange={() => setAlgorithm(algo.id as any)} className="hidden" 
+                        />
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${algorithm === algo.id ? 'border-blue-500' : 'border-slate-500'}`}>
+                          {algorithm === algo.id && <div className="w-2 h-2 bg-blue-500 rounded-full"/>}
+                        </div>
+                        <span className="text-sm font-medium">{algo.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
 
           </div>
 
           <div className="p-6 border-t border-slate-700 bg-slate-800/80">
-             <button 
-                onClick={runAlgorithm}
-                disabled={cities.length < 2 || isPlaying}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.4)] disabled:shadow-none transition-all flex justify-center items-center gap-2 mb-4"
-             >
-                <Play size={20} /> Compute Optimized Route
-             </button>
-
-             {trace.length > 0 && viewMode === '2d' && (
-               <>
-                 <div className="flex justify-between items-center gap-2 mb-4">
-                     <button 
-                       onClick={() => {
-                         if(stepIndex >= trace.length - 1) setStepIndex(0);
-                         setIsPlaying(!isPlaying);
-                       }} 
-                       className={`flex-1 flex justify-center items-center gap-2 text-white py-2 rounded-lg font-bold transition-all shadow-md select-none ${isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
-                     >
-                       {isPlaying ? <><Pause size={18} /> Pause</> : <><Play size={18} /> Play</>}
-                     </button>
-                     <button 
-                       onClick={handleStep}
-                       disabled={isPlaying || stepIndex >= trace.length - 1}
-                       className="p-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors text-slate-300"
-                     >
-                       <StepForward size={20} />
-                     </button>
-                 </div>
-                 
-                 <div className="w-full bg-slate-900 border border-slate-700 h-2 rounded-full overflow-hidden">
-                   <div 
-                     className="bg-blue-500 h-full transition-all duration-300"
-                     style={{ width: `${(stepIndex / (trace.length - 1)) * 100}%` }}
-                   />
-                 </div>
-                 <div className="flex justify-between text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-mono">
-                     <span>Step {stepIndex}</span>
-                     <span>Total {trace.length - 1}</span>
-                 </div>
-               </>
-             )}
+            {viewMode === 'map' ? (
+              <button 
+                 onClick={runAlgorithm}
+                 disabled={cities.length < 2 || isPlaying}
+                 className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-4 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.4)] disabled:shadow-none transition-all flex justify-center items-center gap-2"
+              >
+                 <Play size={20} /> Compute Optimized Route
+              </button>
+            ) : (
+               (!isPlaying && trace.length === 0) ? (
+                 <button 
+                   onClick={runAlgorithm}
+                   disabled={cities.length < 2}
+                   className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold py-3 rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:shadow-none transition-all flex justify-center items-center gap-2"
+                 >
+                   <Play size={20} /> Run TSP Algorithm
+                 </button>
+               ) : (
+                 <>
+                   <div className="flex justify-between items-center gap-2 mb-4">
+                       <button 
+                         onClick={() => {
+                           if(stepIndex >= trace.length - 1) setStepIndex(0);
+                           setIsPlaying(!isPlaying);
+                         }} 
+                         className={`flex-1 flex justify-center items-center gap-2 text-white py-3 rounded-lg font-bold transition-all shadow-md select-none ${isPlaying ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+                       >
+                         {isPlaying ? <><Pause size={18} /> Pause</> : <><Play size={18} /> Play</>}
+                       </button>
+                       <button 
+                         onClick={handleStep}
+                         disabled={isPlaying || stepIndex >= trace.length - 1}
+                         className="p-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors text-slate-300"
+                       >
+                         <StepForward size={20} />
+                       </button>
+                   </div>
+                   
+                   <div className="w-full bg-slate-900 border border-slate-700 h-2 rounded-full overflow-hidden mb-2">
+                     <div 
+                       className="bg-blue-500 h-full transition-all duration-300"
+                       style={{ width: `${(stepIndex / (trace.length > 1 ? trace.length - 1 : 1)) * 100}%` }}
+                     />
+                   </div>
+                   <div className="flex justify-between text-[10px] text-slate-500 mt-1 uppercase tracking-widest font-mono mb-2">
+                       <span>Step {stepIndex}</span>
+                       <span>{trace.length > 0 ? trace.length - 1 : 0}</span>
+                   </div>
+                   <div className="text-xs text-slate-400 font-mono h-4 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {currentEvent?.pruneReason || (currentEvent?.type === 'UPDATE_BEST' ? `New Best: ${currentEvent.bestCost?.toFixed(2)}` : 'Evaluating node...')}
+                   </div>
+                 </>
+               )
+            )}
           </div>
         </div>
 
